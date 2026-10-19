@@ -9,6 +9,7 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_PORT, STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -22,6 +23,7 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
 from custom_components.racktivity_dcmu.const import (
     CONF_COMMUNITY,
     CONF_CONFIG_INTERVAL,
+    CONF_CYCLE_DELAY,
     CONF_ENABLE_CONTROL,
     CONF_SCAN_INTERVAL,
     CONF_WRITE_COMMUNITY,
@@ -176,8 +178,6 @@ async def test_switch(hass: HomeAssistant, fake_snmp) -> None:
 
 async def test_switch_failure(hass: HomeAssistant, fake_snmp) -> None:
     """A rejected SET surfaces as an error, state unchanged."""
-    from homeassistant.exceptions import HomeAssistantError
-
     await _setup(hass, {CONF_ENABLE_CONTROL: True, CONF_WRITE_COMMUNITY: "stale"})
     with pytest.raises(HomeAssistantError, match="Switching outlet 6 failed"):
         await hass.services.async_call(
@@ -254,7 +254,7 @@ async def test_options_change_unloads_old_platforms(hass: HomeAssistant, fake_sn
     )
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
-    assert _loaded_platforms(hass, entry) == {"sensor", "binary_sensor", "switch"}
+    assert _loaded_platforms(hass, entry) == {"sensor", "binary_sensor", "switch", "button"}
     assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
     assert hass.states.get("binary_sensor.test_pdu_out1") is None  # relay sensor gone
     assert hass.states.get("binary_sensor.test_pdu_out1_over_current_warning_level")
@@ -305,3 +305,44 @@ async def test_problem_sensors(
         hass.states.get("binary_sensor.test_pdu_over_total_current_warning_level").state == STATE_ON
     )
     assert hass.states.get("binary_sensor.test_pdu_voltage_out_of_range").state == STATE_ON
+
+
+async def test_power_cycle(hass: HomeAssistant, fake_snmp, freezer: FrozenDateTimeFactory) -> None:
+    """The button switches off, waits the configured delay, switches on."""
+    entry = await _setup(
+        hass,
+        {CONF_ENABLE_CONTROL: True, CONF_WRITE_COMMUNITY: WRITE_COMMUNITY, CONF_CYCLE_DELAY: 7},
+    )
+    client = entry.runtime_data.pdu.client
+    assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
+
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.test_pdu_out1_power_cycle"}, blocking=True
+    )
+    assert client.sets == [(f"{BASE}.3.1.1.7.0", 0)]
+    assert hass.states.get("switch.test_pdu_out1").state == STATE_OFF
+
+    # Pressing again while cycling is refused, and sends nothing.
+    with pytest.raises(HomeAssistantError, match="already power cycling"):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": "button.test_pdu_out1_power_cycle"}, blocking=True
+        )
+    assert len(client.sets) == 1
+
+    freezer.tick(timedelta(seconds=6))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len(client.sets) == 1  # not yet
+
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert client.sets[-1] == (f"{BASE}.3.1.1.7.0", 1)
+    assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
+    assert not entry.runtime_data.is_cycling(0)
+
+
+async def test_no_button_without_control(hass: HomeAssistant, fake_snmp) -> None:
+    """Power-cycle buttons exist only alongside the switches."""
+    await _setup(hass)
+    assert hass.states.get("button.test_pdu_out1_power_cycle") is None

@@ -45,7 +45,7 @@
     "step": {
       "init": {
         "title": "Racktivity DCMU options",
-        "description": "Live values and relay states are read every scan interval; names, thresholds and peaks every configuration interval (and right after a relay change).\n\nRelay switching is off by default. It needs both the checkbox and the SNMP write community; without them outlets are read-only binary sensors.\n\nOptional: with the web login, values SNMP does not provide (lifetime energy, firmware version, external sensors, the device event log) are read from the web interface every web API interval. Only reads are done.",
+        "description": "Live values and relay states are read every scan interval; names, thresholds and peaks every configuration interval (and right after a relay change).\n\nRelay switching is off by default. It needs both the checkbox and the SNMP write community; without them outlets are read-only binary sensors.\n\nOptional: with the web login, values SNMP does not provide (lifetime energy, firmware version, external sensors, the device event log) are read from the web interface every web API interval. Only reads are done.\n\nWith relay control, each outlet also gets a **Power cycle** button: off, wait the configured time, on.",
         "data": {
           "scan_interval": "Scan interval",
           "config_interval": "Configuration interval",
@@ -53,7 +53,8 @@
           "write_community": "Write community",
           "web_username": "Web username",
           "web_password": "Web password",
-          "http_interval": "Web API interval"
+          "http_interval": "Web API interval",
+          "cycle_delay": "Power cycle off time"
         }
       }
     },
@@ -174,11 +175,19 @@
           }
         }
       }
+    },
+    "button": {
+      "power_cycle": {
+        "name": "Power cycle"
+      }
     }
   },
   "exceptions": {
     "relay_failed": {
       "message": "Switching outlet {outlet} failed: {error}"
+    },
+    "cycle_in_progress": {
+      "message": "Outlet {outlet} is already power cycling"
     }
   }
 }

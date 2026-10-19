@@ -19,6 +19,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     CONF_COMMUNITY,
     CONF_CONFIG_INTERVAL,
+    CONF_CYCLE_DELAY,
     CONF_ENABLE_CONTROL,
     CONF_HTTP_INTERVAL,
     CONF_SCAN_INTERVAL,
@@ -27,14 +28,17 @@ from .const import (
     CONF_WRITE_COMMUNITY,
     DEFAULT_COMMUNITY,
     DEFAULT_CONFIG_INTERVAL,
+    DEFAULT_CYCLE_DELAY,
     DEFAULT_HTTP_INTERVAL,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MAX_CONFIG_INTERVAL,
+    MAX_CYCLE_DELAY,
     MAX_HTTP_INTERVAL,
     MAX_SCAN_INTERVAL,
     MIN_CONFIG_INTERVAL,
+    MIN_CYCLE_DELAY,
     MIN_HTTP_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
@@ -220,7 +224,12 @@ class DcmuOptionsFlow(OptionsFlowWithReload):
         """Manage options."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            for key in (CONF_SCAN_INTERVAL, CONF_CONFIG_INTERVAL, CONF_HTTP_INTERVAL):
+            for key in (
+                CONF_SCAN_INTERVAL,
+                CONF_CONFIG_INTERVAL,
+                CONF_HTTP_INTERVAL,
+                CONF_CYCLE_DELAY,
+            ):
                 if key in user_input:
                     user_input[key] = int(user_input[key])
             error = await _apply_extras(self.hass, self.config_entry.data[CONF_HOST], user_input)
@@ -240,6 +249,9 @@ class DcmuOptionsFlow(OptionsFlowWithReload):
                     default=opts.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL),
                 ): _seconds(MIN_CONFIG_INTERVAL, MAX_CONFIG_INTERVAL),
                 **_extras_fields(opts),
+                vol.Required(
+                    CONF_CYCLE_DELAY, default=opts.get(CONF_CYCLE_DELAY, DEFAULT_CYCLE_DELAY)
+                ): _seconds(MIN_CYCLE_DELAY, MAX_CYCLE_DELAY),
                 vol.Required(
                     CONF_HTTP_INTERVAL, default=opts.get(CONF_HTTP_INTERVAL, DEFAULT_HTTP_INTERVAL)
                 ): _seconds(MIN_HTTP_INTERVAL, MAX_HTTP_INTERVAL),

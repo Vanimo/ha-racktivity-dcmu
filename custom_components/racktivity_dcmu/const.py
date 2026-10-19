@@ -13,6 +13,7 @@ CONF_CONFIG_INTERVAL: Final = "config_interval"
 CONF_WEB_USERNAME: Final = "web_username"
 CONF_WEB_PASSWORD: Final = "web_password"
 CONF_HTTP_INTERVAL: Final = "http_interval"
+CONF_CYCLE_DELAY: Final = "cycle_delay"
 
 DEFAULT_PORT: Final = 161
 DEFAULT_COMMUNITY: Final = "public"
@@ -21,6 +22,7 @@ DEFAULT_COMMUNITY: Final = "public"
 DEFAULT_SCAN_INTERVAL: Final = 15  # seconds
 DEFAULT_CONFIG_INTERVAL: Final = 300  # seconds, names/thresholds/peaks
 DEFAULT_HTTP_INTERVAL: Final = 60  # seconds, web API extras + event log
+DEFAULT_CYCLE_DELAY: Final = 10  # seconds an outlet stays off during a power cycle
 
 MIN_SCAN_INTERVAL: Final = 2
 MAX_SCAN_INTERVAL: Final = 300
@@ -28,6 +30,8 @@ MIN_CONFIG_INTERVAL: Final = 60
 MAX_CONFIG_INTERVAL: Final = 86400
 MIN_HTTP_INTERVAL: Final = 10
 MAX_HTTP_INTERVAL: Final = 3600
+MIN_CYCLE_DELAY: Final = 2
+MAX_CYCLE_DELAY: Final = 120
 
 EVENT_RELAY_CHANGED: Final = f"{DOMAIN}_relay_changed"
 EVENT_DEVICE_EVENT: Final = f"{DOMAIN}_device_event"

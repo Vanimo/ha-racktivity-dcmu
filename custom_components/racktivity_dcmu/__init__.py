@@ -44,7 +44,7 @@ def platforms_for(entry: DcmuConfigEntry) -> list[Platform]:
     """Platforms in use for this entry's options."""
     platforms = [Platform.SENSOR, Platform.BINARY_SENSOR]
     if control_enabled(entry):
-        platforms.append(Platform.SWITCH)
+        platforms += [Platform.SWITCH, Platform.BUTTON]
     if http_enabled(entry):
         platforms.append(Platform.EVENT)
     return platforms
@@ -114,12 +114,17 @@ def _remove_stale_entities(hass: HomeAssistant, entry: DcmuConfigEntry) -> None:
     """Drop entities that the current options no longer provide.
 
     Relay state moves between switch and binary sensor with the control
-    option; web API entities go away when the web login is removed.
+    option (the power-cycle buttons go with the switches); web API entities
+    go away when the web login is removed.
     """
-    inactive_relay = Platform.BINARY_SENSOR if control_enabled(entry) else Platform.SWITCH
     registry = er.async_get(hass)
     for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
-        stale_relay = reg_entry.domain == inactive_relay and reg_entry.unique_id.endswith("_relay")
+        if control_enabled(entry):
+            stale_relay = reg_entry.domain == Platform.BINARY_SENSOR and (
+                reg_entry.unique_id.endswith("_relay")
+            )
+        else:
+            stale_relay = reg_entry.domain in (Platform.SWITCH, Platform.BUTTON)
         stale_http = not http_enabled(entry) and _HTTP_KEYS.search(reg_entry.unique_id)
         if stale_relay or stale_http:
             registry.async_remove(reg_entry.entity_id)
@@ -131,5 +136,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: DcmuConfigEntry) -> boo
     # would set up now.
     unloaded = await hass.config_entries.async_unload_platforms(entry, entry.runtime_data.platforms)
     if unloaded:
+        entry.runtime_data.cancel_power_cycles()
         entry.runtime_data.pdu.close()
     return unloaded
