@@ -1,0 +1,9 @@
+# Web UI pages and HAR captures from the device: may contain credentials, never commit
+raw/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
