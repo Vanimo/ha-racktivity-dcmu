@@ -1,5 +1,8 @@
 # Racktivity DCMU for Home Assistant
 
+[![Tests](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/tests.yml/badge.svg)](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/tests.yml)
+[![Validate](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/validate.yml/badge.svg)](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/validate.yml)
+
 Custom integration for the **Racktivity DCMU / EnergySwitch PM0816** 8-outlet PDU
 (hardware 2.02, firmware 3.00; the SNMP agent reports `DCMU_8port`). The vendor is
 gone and there is no published MIB; everything here was worked out from the device's web
@@ -121,7 +124,8 @@ already catches relay changes and threshold-relevant values.
 ## Development
 
 ```bash
-python -m venv venv && venv/bin/pip install pytest-homeassistant-custom-component
+python -m venv venv && venv/bin/pip install -r requirements_test.txt
+venv/bin/ruff check . && venv/bin/ruff format --check . && venv/bin/mypy custom_components/racktivity_dcmu
 venv/bin/pytest                                   # offline tests (fake agent / mocked HTTP)
 DCMU_LIVE_HOST=<pdu-ip> venv/bin/pytest tests/test_live.py -s   # read-only, real PDU
 # optionally add DCMU_LIVE_WEB_USER=... DCMU_LIVE_WEB_PASSWORD=...
