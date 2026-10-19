@@ -3,6 +3,26 @@
 Each `## [X.Y.Z]` section is the release notes for that GitHub release; `manifest.json`
 must carry the same version (a test checks this).
 
+## [0.3.0]
+
+### Added
+- **Power cycle** button per outlet (with relay control enabled): switches the outlet off and
+  back on after the new *Power cycle off time* option (default 10 s). Pressing it again while
+  a cycle is running is refused.
+- Problem sensors computed from the limits configured on the PDU: *Over current warning
+  level* per outlet, and *Over total current warning level* and *Voltage out of range* for the
+  PDU. Handy automation triggers without templates.
+- *Temperature warning level* diagnostic sensor (disabled by default).
+- Re-authentication: if the PDU rejects the web login, Home Assistant asks for the new one
+  instead of leaving the web API entities unavailable.
+
+### Changed
+- Three previously unidentified SNMP values are now known (humidity and temperature trap
+  flags, internal temperature warning level); the external temperature sensor table is read
+  in its own request so a firmware without it can't break the configuration read. The one
+  remaining unidentified outlet value is no longer polled.
+- Diagnostics show the raw external sensor table instead of "unidentified OIDs".
+
 ## [0.2.0]
 
 ### Added

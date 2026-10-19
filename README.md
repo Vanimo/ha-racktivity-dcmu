@@ -58,20 +58,25 @@ entry. The ⋮ menu has no options entry.
 | Configuration interval | 300 s | Names, limits, peaks. Also re-read right after a relay change or a "setting changed" log entry |
 | Allow switching outlet relays | off | Turns outlet binary sensors into switches. Needs the write community too |
 | Write community | — | SNMP write community. Only used for relay switching |
+| Power cycle off time | 10 s | How long an outlet stays off when its *Power cycle* button is pressed |
 | Web username / password | — | Enables the read-only web API extras |
 | Web API interval | 60 s | Web API extras + event log (3 HTTP requests) |
 
 ## Entities
 
 PDU device: voltage, frequency, total current, total power, total energy, internal
-temperature, internal humidity, peak total current. Disabled diagnostic entities: total
-current warning/off level, voltage and humidity warning limits, peak time.
+temperature, internal humidity, peak total current, and two problem sensors: *Over total
+current warning level* and *Voltage out of range*, computed from the limits configured on
+the PDU. Disabled diagnostic entities: total current warning/off level, voltage, humidity and
+temperature warning limits, peak time.
 
 One device per outlet (named after the outlet name configured on the PDU):
 
 | Entity | Source | Notes |
 |---|---|---|
 | Relay | SNMP | binary sensor (read-only), or a switch with control enabled |
+| Power cycle | SNMP | button, only with control enabled: off, wait the configured time, on |
+| Over current warning level | SNMP | problem sensor: current at or above the outlet's warning level |
 | Current, power, apparent power, power factor | SNMP | power factor is *unknown* while the outlet draws nothing |
 | Energy | SNMP | **resettable** counter (the web UI's "Resettable kWh") |
 | Lifetime energy | web API | never reset; the best choice for the Energy dashboard |
@@ -117,9 +122,13 @@ already catches relay changes and threshold-relevant values.
 
 ## Known limitations
 
+- If the PDU's web password changes, Home Assistant shows a *Reauthenticate* prompt for the
+  integration; the SNMP entities keep working meanwhile.
 - The agent drops any request containing an OID it doesn't know (no error, just silence), so the
   integration only ever asks for known OIDs.
-- A few OIDs are still unidentified; they're listed under *Download diagnostics*.
+- One outlet OID (`.3.1.1.9`) is still unidentified and is not polled. The external
+  temperature sensor table is read over SNMP and shown raw in *Download diagnostics*; its
+  readings aren't exposed as entities until someone with probes confirms the scale.
 
 ## Development
 
