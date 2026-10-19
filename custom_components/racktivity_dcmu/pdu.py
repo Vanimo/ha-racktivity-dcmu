@@ -313,8 +313,7 @@ class DcmuSnmp:
     async def set_relay(self, index: int, on: bool) -> None:
         """Switch one outlet relay via SNMP SET.
 
-        Unverified on hardware: assumes .3.1.1.7.<index> is writable with
-        1 = on / 0 = off.
+        Writes outlet column .3.1.1.7.<index>: 1 = on, 0 = off.
         """
         if self.write_community is None:
             raise PermissionError("No SNMP write community configured")

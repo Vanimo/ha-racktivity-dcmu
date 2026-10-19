@@ -114,8 +114,6 @@ already catches relay changes and threshold-relevant values.
 
 ## Known limitations
 
-- **Relay switching via SNMP SET hasn't been verified on hardware yet.** It assumes outlet
-  column `.3.1.1.7.<n>` is writable with 1 = on / 0 = off. Test on an unused outlet first.
 - The agent drops any request containing an OID it doesn't know (no error, just silence), so the
   integration only ever asks for known OIDs.
 - A few OIDs are still unidentified; they're listed under *Download diagnostics*.
