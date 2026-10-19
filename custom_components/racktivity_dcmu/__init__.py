@@ -42,12 +42,9 @@ def http_enabled(entry: DcmuConfigEntry) -> bool:
 
 def platforms_for(entry: DcmuConfigEntry) -> list[Platform]:
     """Platforms in use for this entry's options."""
-    platforms = [Platform.SENSOR]
+    platforms = [Platform.SENSOR, Platform.BINARY_SENSOR]
     if control_enabled(entry):
         platforms.append(Platform.SWITCH)
-    if not control_enabled(entry) or http_enabled(entry):
-        # Relay state while read-only; intrusion inputs from the web API.
-        platforms.append(Platform.BINARY_SENSOR)
     if http_enabled(entry):
         platforms.append(Platform.EVENT)
     return platforms

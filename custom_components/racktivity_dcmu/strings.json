@@ -149,6 +149,15 @@
     "binary_sensor": {
       "intrusion": {
         "name": "Intrusion {input}"
+      },
+      "over_total_warning_level": {
+        "name": "Over total current warning level"
+      },
+      "voltage_out_of_range": {
+        "name": "Voltage out of range"
+      },
+      "over_warning_level": {
+        "name": "Over current warning level"
       }
     },
     "event": {

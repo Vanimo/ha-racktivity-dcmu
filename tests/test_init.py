@@ -254,8 +254,10 @@ async def test_options_change_unloads_old_platforms(hass: HomeAssistant, fake_sn
     )
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
-    assert _loaded_platforms(hass, entry) == {"sensor", "switch"}
+    assert _loaded_platforms(hass, entry) == {"sensor", "binary_sensor", "switch"}
     assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
+    assert hass.states.get("binary_sensor.test_pdu_out1") is None  # relay sensor gone
+    assert hass.states.get("binary_sensor.test_pdu_out1_over_current_warning_level")
 
 
 async def test_missing_sensor_table_is_harmless(hass: HomeAssistant, fake_snmp) -> None:
@@ -274,3 +276,32 @@ async def test_temperature_warning_level(hass: HomeAssistant, fake_snmp) -> None
     reg = registry.async_get("sensor.test_pdu_temperature_warning_level")
     assert reg is not None and reg.disabled_by is er.RegistryEntryDisabler.INTEGRATION
     assert entry.runtime_data.data.temperature_warning == 45.0
+
+
+async def test_problem_sensors(
+    hass: HomeAssistant, fake_snmp, freezer: FrozenDateTimeFactory
+) -> None:
+    """Over-limit flags follow the device's own warning levels."""
+    await _setup(hass)
+    assert (
+        hass.states.get("binary_sensor.test_pdu_out1_over_current_warning_level").state == STATE_OFF
+    )
+    assert (
+        hass.states.get("binary_sensor.test_pdu_over_total_current_warning_level").state
+        == STATE_OFF
+    )
+    assert hass.states.get("binary_sensor.test_pdu_voltage_out_of_range").state == STATE_OFF
+
+    fake_snmp.values[f"{BASE}.3.1.1.3.0"] = 2_000  # = outlet 1 warning level (mA)
+    fake_snmp.values[f"{BASE}.2.3.0"] = 12_000  # above the total warning level
+    fake_snmp.values[f"{BASE}.2.1.0"] = 25_000  # 250 V, above the max
+    freezer.tick(timedelta(seconds=DEFAULT_SCAN_INTERVAL))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert (
+        hass.states.get("binary_sensor.test_pdu_out1_over_current_warning_level").state == STATE_ON
+    )
+    assert (
+        hass.states.get("binary_sensor.test_pdu_over_total_current_warning_level").state == STATE_ON
+    )
+    assert hass.states.get("binary_sensor.test_pdu_voltage_out_of_range").state == STATE_ON
