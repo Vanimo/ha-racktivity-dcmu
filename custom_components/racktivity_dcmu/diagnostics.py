@@ -17,17 +17,15 @@ TO_REDACT = {CONF_COMMUNITY, CONF_WRITE_COMMUNITY, CONF_WEB_USERNAME, CONF_WEB_P
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: DcmuConfigEntry
 ) -> dict[str, Any]:
-    """Return diagnostics, including the OIDs whose meaning is still unknown."""
+    """Return the decoded device state with credentials redacted."""
     coordinator = entry.runtime_data
     state = asdict(coordinator.data)
-    unknown = state.pop("unknown")
     return {
         "entry": {
             "data": async_redact_data(dict(entry.data), TO_REDACT),
             "options": async_redact_data(dict(entry.options), TO_REDACT),
         },
         "state": state,
-        "unidentified_oids": {k: repr(v) for k, v in unknown.items()},
         "web_api": (
             {
                 "last_update_success": coordinator.http.last_update_success,

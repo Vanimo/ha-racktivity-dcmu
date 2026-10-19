@@ -141,6 +141,9 @@
       },
       "external_temperature": {
         "name": "External temperature {sensor}"
+      },
+      "temperature_warning": {
+        "name": "Temperature warning level"
       }
     },
     "binary_sensor": {

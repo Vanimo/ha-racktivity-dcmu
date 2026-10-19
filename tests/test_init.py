@@ -217,7 +217,7 @@ async def test_diagnostics(hass: HomeAssistant, hass_client, fake_snmp) -> None:
     assert diag["entry"]["data"][CONF_COMMUNITY] == "**REDACTED**"
     assert diag["entry"]["options"][CONF_WRITE_COMMUNITY] == "**REDACTED**"
     assert diag["state"]["name"] == "Test PDU"
-    assert "2.23.0" in diag["unidentified_oids"]
+    assert diag["state"]["sensors"]["external_temperature_1_warning"] == 700
 
 
 async def test_power_factor_unknown_when_idle(hass: HomeAssistant, fake_snmp) -> None:
@@ -256,3 +256,21 @@ async def test_options_change_unloads_old_platforms(hass: HomeAssistant, fake_sn
     assert entry.state is ConfigEntryState.LOADED
     assert _loaded_platforms(hass, entry) == {"sensor", "switch"}
     assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
+
+
+async def test_missing_sensor_table_is_harmless(hass: HomeAssistant, fake_snmp) -> None:
+    """Firmware without the external sensor table still sets up fully."""
+    del fake_snmp.values[f"{BASE}.4.1.1.5.0"]
+    entry = await _setup(hass)
+    assert entry.state is ConfigEntryState.LOADED
+    assert hass.states.get("sensor.test_pdu_voltage").state != STATE_UNAVAILABLE
+    assert entry.runtime_data.data.sensors_available is False
+
+
+async def test_temperature_warning_level(hass: HomeAssistant, fake_snmp) -> None:
+    """The verified .2.23 scalar is exposed as a (disabled) diagnostic sensor."""
+    entry = await _setup(hass)
+    registry = er.async_get(hass)
+    reg = registry.async_get("sensor.test_pdu_temperature_warning_level")
+    assert reg is not None and reg.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert entry.runtime_data.data.temperature_warning == 45.0

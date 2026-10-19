@@ -9,7 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from custom_components.racktivity_dcmu.snmp import (
-    NoSuchObject,
     SnmpErrorStatus,
     SnmpTimeout,
     SnmpValue,
@@ -53,7 +52,10 @@ class FakeSnmpClient:
         self.gets += 1
         if self.offline or self.community != READ_COMMUNITY:
             raise SnmpTimeout("offline")
-        return {o: self.values.get(o, NoSuchObject(0x80)) for o in oids}
+        if any(o not in self.values for o in oids):
+            # Like the real agent: a request with an unknown OID gets no answer.
+            raise SnmpTimeout("unknown OID in request")
+        return {o: self.values[o] for o in oids}
 
     async def set(self, varbinds, community: str) -> dict[str, SnmpValue]:
         if self.offline or community != self.write_community:

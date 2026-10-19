@@ -67,6 +67,16 @@ class DcmuCoordinator(DataUpdateCoordinator[PduState]):
         self.config_interval = entry.options.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL)
         self._config_due = 0.0  # monotonic; 0 = read on first refresh
         self._last_relay_mask: int | None = None
+        self._sensors_warned = False
+
+    async def _read_optional_sensors(self) -> None:
+        """The sensor table is optional; log once if this firmware lacks it."""
+        try:
+            await self.pdu.read_sensors()
+        except SnmpError as err:
+            if self._sensors_warned is False:
+                _LOGGER.info("Sensor table not readable on %s (%s)", self.pdu.client.host, err)
+                self._sensors_warned = True
 
     def request_config_refresh(self) -> None:
         """Re-read configuration on the next update."""
@@ -81,6 +91,7 @@ class DcmuCoordinator(DataUpdateCoordinator[PduState]):
             if relay_changed or time.monotonic() >= self._config_due:
                 await self.pdu.read_config()
                 self._config_due = time.monotonic() + self.config_interval
+                await self._read_optional_sensors()
         except SnmpError as err:
             raise UpdateFailed(f"Error communicating with {self.pdu.client.host}: {err}") from err
 

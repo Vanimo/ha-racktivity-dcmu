@@ -23,6 +23,8 @@ HW_VERSION = (4, 5)
 VOLTAGE_CV = 23100  # 231.00 V
 FREQUENCY_CHZ = 5000  # 50.00 Hz
 TEMPERATURE_DC = 215  # 21.5 °C
+TEMPERATURE_WARNING_DC = 450  # 45.0 °C
+EXTERNAL_WARNING_DC = 700  # 70.0 °C
 HUMIDITY_PCT = 40
 RELAYS = [1, 1, 1, 1, 1, 0, 0, 0]
 CURRENT_MA = [500, 0, 0, 0, 0, 0, 0, 0]
@@ -74,8 +76,11 @@ def snmp_values() -> dict[str, SnmpValue]:
         _scalar(21): 24000,
         _scalar(22): 1,
     }
-    for n in (12, 13, 14, 19, 23, 24):
+    for n in (12, 13, 14):
         v[_scalar(n)] = 0
+    v[_scalar(19)] = 1  # humidity trap enable
+    v[_scalar(23)] = TEMPERATURE_WARNING_DC
+    v[_scalar(24)] = 1  # temperature trap enable
     for i in range(NUM_OUTLETS):
         v[_col(2, i)] = OUTLET_NAMES[i].encode()
         v[_col(3, i)] = CURRENT_MA[i]
@@ -91,8 +96,10 @@ def snmp_values() -> dict[str, SnmpValue]:
         v[_col(13, i)] = 3_000
         v[_col(14, i)] = 1
         v[_col(15, i)] = i
-        for col in (2, 3, 4, 5, 6):
-            v[f"{BASE}.4.1.1.{col}.{i}"] = 0
+        for col in (2, 3, 4):
+            v[f"{BASE}.4.1.1.{col}.{i}"] = 0  # external probes: not connected
+        v[f"{BASE}.4.1.1.5.{i}"] = EXTERNAL_WARNING_DC
+        v[f"{BASE}.4.1.1.6.{i}"] = 1
     return v
 
 
