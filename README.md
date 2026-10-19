@@ -51,7 +51,7 @@ entry. The ⋮ menu has no options entry.
 
 | Option | Default | What it does |
 |---|---|---|
-| Scan interval | 5 s | Live values + relay states (2 small SNMP GETs) |
+| Scan interval | 15 s | Live values + relay states (2 small SNMP GETs). Current and power are informative; energy comes from the cumulative Wh counters, so faster polling adds little |
 | Configuration interval | 300 s | Names, limits, peaks. Also re-read right after a relay change or a "setting changed" log entry |
 | Allow switching outlet relays | off | Turns outlet binary sensors into switches. Needs the write community too |
 | Write community | — | SNMP write community. Only used for relay switching |
@@ -104,12 +104,12 @@ action:
 
 ## Polling and load
 
-Per scan (5 s): 2 SNMP GETs, about 55 values. Every 300 s: 5 more GETs for configuration.
+Per scan (15 s): 2 SNMP GETs, about 55 values. Every 300 s: 5 more GETs for configuration.
 With the web API, every 60 s: 3 HTTP GETs (~1 KB). The PDU's own web UI polls every 2 s, so
 this is well within what the device handles.
 
 SNMP traps aren't used. They'd need a trap receiver configured on the PDU (a settings
-change), a UDP listener inside Home Assistant, and their content is undocumented. Polling at 5 s
+change), a UDP listener inside Home Assistant, and their content is undocumented. Polling at 15 s
 already catches relay changes and threshold-relevant values.
 
 ## Known limitations

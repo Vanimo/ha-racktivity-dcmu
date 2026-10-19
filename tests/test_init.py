@@ -25,6 +25,7 @@ from custom_components.racktivity_dcmu.const import (
     CONF_ENABLE_CONTROL,
     CONF_SCAN_INTERVAL,
     CONF_WRITE_COMMUNITY,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     EVENT_RELAY_CHANGED,
 )
@@ -99,7 +100,7 @@ async def test_polling_tiers(
     pdu.read_config = counting_read_config
 
     for _ in range(3):
-        freezer.tick(timedelta(seconds=5))
+        freezer.tick(timedelta(seconds=DEFAULT_SCAN_INTERVAL))
         async_fire_time_changed(hass)
         await hass.async_block_till_done()
     assert config_reads == 0
@@ -107,7 +108,7 @@ async def test_polling_tiers(
 
     # Someone switches outlet 1 off at the PDU.
     fake_snmp.values[f"{BASE}.3.1.1.7.0"] = 0
-    freezer.tick(timedelta(seconds=5))
+    freezer.tick(timedelta(seconds=DEFAULT_SCAN_INTERVAL))
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert hass.states.get("binary_sensor.test_pdu_out1").state == STATE_OFF
@@ -124,12 +125,12 @@ async def test_unavailable_when_offline(
     """Timeouts mark entities unavailable, and they recover."""
     await _setup(hass)
     fake_snmp.offline = True
-    freezer.tick(timedelta(seconds=5))
+    freezer.tick(timedelta(seconds=DEFAULT_SCAN_INTERVAL))
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert hass.states.get("sensor.test_pdu_voltage").state == STATE_UNAVAILABLE
     fake_snmp.offline = False
-    freezer.tick(timedelta(seconds=5))
+    freezer.tick(timedelta(seconds=DEFAULT_SCAN_INTERVAL))
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert hass.states.get("sensor.test_pdu_voltage").state != STATE_UNAVAILABLE

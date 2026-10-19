@@ -16,7 +16,9 @@ CONF_HTTP_INTERVAL: Final = "http_interval"
 
 DEFAULT_PORT: Final = 161
 DEFAULT_COMMUNITY: Final = "public"
-DEFAULT_SCAN_INTERVAL: Final = 5  # seconds, live values + relay state
+# Live values + relay state. Current/power are informative; energy comes from the
+# cumulative Wh counters, so there's no need to poll fast.
+DEFAULT_SCAN_INTERVAL: Final = 15  # seconds
 DEFAULT_CONFIG_INTERVAL: Final = 300  # seconds, names/thresholds/peaks
 DEFAULT_HTTP_INTERVAL: Final = 60  # seconds, web API extras + event log
 
