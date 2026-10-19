@@ -23,6 +23,7 @@ from functools import partial
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -40,7 +41,7 @@ from .const import (
     EVENT_DEVICE_EVENT,
     EVENT_RELAY_CHANGED,
 )
-from .http_api import DcmuHttp, DcmuHttpError, HttpState
+from .http_api import DcmuHttp, DcmuHttpAuthError, DcmuHttpError, HttpState
 from .pdu import DcmuSnmp, PduState
 from .snmp import SnmpError
 
@@ -199,6 +200,9 @@ class DcmuHttpCoordinator(DataUpdateCoordinator[HttpState]):
         had_versions = self._state.sw_version is not None
         try:
             state = await self.api.read_state(self._state)
+        except DcmuHttpAuthError as err:
+            # Starts a reauth flow; the SNMP coordinator is unaffected.
+            raise ConfigEntryAuthFailed("Web login rejected") from err
         except DcmuHttpError as err:
             raise UpdateFailed(f"Web API error: {err}") from err
 

@@ -27,6 +27,14 @@
           "port": "SNMP port",
           "community": "Read community"
         }
+      },
+      "reauth_confirm": {
+        "title": "Web login rejected",
+        "description": "The PDU no longer accepts the stored web login. Enter the current one; only reads are done with it.",
+        "data": {
+          "web_username": "Web username",
+          "web_password": "Web password"
+        }
       }
     },
     "error": {
@@ -38,7 +46,8 @@
     },
     "abort": {
       "already_configured": "This PDU is already configured.",
-      "reconfigure_successful": "Reconfiguration successful."
+      "reconfigure_successful": "Reconfiguration successful.",
+      "reauth_successful": "The web login was updated."
     }
   },
   "options": {
