@@ -224,3 +224,34 @@ async def test_power_factor_unknown_when_idle(hass: HomeAssistant, fake_snmp) ->
     await _setup(hass)
     assert float(hass.states.get("sensor.test_pdu_out1_power_factor").state) > 0
     assert hass.states.get("sensor.test_pdu_out2_power_factor").state == "unknown"
+
+
+def _loaded_platforms(hass: HomeAssistant, entry: MockConfigEntry) -> set[str]:
+    from homeassistant.helpers import entity_platform
+
+    return {
+        p.domain
+        for p in entity_platform.async_get_platforms(hass, DOMAIN)
+        if p.config_entry is not None and p.config_entry.entry_id == entry.entry_id
+    }
+
+
+async def test_options_change_unloads_old_platforms(hass: HomeAssistant, fake_snmp) -> None:
+    """Enabling control replaces the binary sensor platform instead of leaking it."""
+    entry = await _setup(hass)
+    assert _loaded_platforms(hass, entry) == {"sensor", "binary_sensor"}
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_SCAN_INTERVAL: 5,
+            CONF_CONFIG_INTERVAL: 300,
+            CONF_ENABLE_CONTROL: True,
+            CONF_WRITE_COMMUNITY: WRITE_COMMUNITY,
+        },
+    )
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    assert _loaded_platforms(hass, entry) == {"sensor", "switch"}
+    assert hass.states.get("switch.test_pdu_out1").state == STATE_ON

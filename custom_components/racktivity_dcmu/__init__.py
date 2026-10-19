@@ -101,7 +101,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: DcmuConfigEntry) -> bool
             )
 
     _remove_stale_entities(hass, entry)
-    await hass.config_entries.async_forward_entry_setups(entry, platforms_for(entry))
+    coordinator.platforms = platforms_for(entry)
+    await hass.config_entries.async_forward_entry_setups(entry, coordinator.platforms)
     return True
 
 
@@ -129,7 +130,9 @@ def _remove_stale_entities(hass: HomeAssistant, entry: DcmuConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: DcmuConfigEntry) -> bool:
     """Unload a config entry."""
-    unloaded = await hass.config_entries.async_unload_platforms(entry, platforms_for(entry))
+    # Unload what was set up, not what the (possibly just changed) options
+    # would set up now.
+    unloaded = await hass.config_entries.async_unload_platforms(entry, entry.runtime_data.platforms)
     if unloaded:
         entry.runtime_data.pdu.close()
     return unloaded

@@ -39,7 +39,10 @@ Samba or SSH add-on) and restart Home Assistant.
 | SNMP port | 161 | |
 | Read community | `public` | |
 
-### Options (⋮ → *Configure*)
+### Options
+
+*Settings → Devices & services → Racktivity DCMU*, then the **gear icon** (⚙) next to the
+entry. The ⋮ menu has no options entry.
 
 | Option | Default | What it does |
 |---|---|---|

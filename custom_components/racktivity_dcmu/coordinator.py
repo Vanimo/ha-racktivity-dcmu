@@ -19,6 +19,7 @@ from copy import deepcopy
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -62,6 +63,7 @@ class DcmuCoordinator(DataUpdateCoordinator[PduState]):
         )
         self.pdu = pdu
         self.http: DcmuHttpCoordinator | None = None
+        self.platforms: list[Platform] = []
         self.config_interval = entry.options.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL)
         self._config_due = 0.0  # monotonic; 0 = read on first refresh
         self._last_relay_mask: int | None = None
