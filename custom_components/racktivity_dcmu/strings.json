@@ -1,0 +1,160 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Racktivity DCMU",
+        "description": "Connect to the PDU's SNMP agent (v2c). Only reads are done; relay control can be enabled later in the options.",
+        "data": {
+          "host": "Host",
+          "port": "SNMP port",
+          "community": "Read community"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Racktivity DCMU",
+        "data": {
+          "host": "Host",
+          "port": "SNMP port",
+          "community": "Read community"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No SNMP response. Check host, port and read community.",
+      "not_dcmu": "The device answered, but is not a Racktivity DCMU.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This PDU is already configured.",
+      "reconfigure_successful": "Reconfiguration successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Racktivity DCMU options",
+        "description": "Live values and relay states are read every scan interval; names, thresholds and peaks every configuration interval (and right after a relay change).\n\nRelay switching is off by default. It needs both the checkbox and the SNMP write community; without them outlets are read-only binary sensors.\n\nOptional: with the web login, values SNMP does not provide (lifetime energy, firmware version, external sensors, the device event log) are read from the web interface every web API interval. Only reads are done.",
+        "data": {
+          "scan_interval": "Scan interval",
+          "config_interval": "Configuration interval",
+          "enable_control": "Allow switching outlet relays",
+          "write_community": "Write community",
+          "web_username": "Web username",
+          "web_password": "Web password",
+          "http_interval": "Web API interval"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The web login was rejected.",
+      "cannot_connect_http": "The web interface did not respond."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "voltage": {
+        "name": "Voltage"
+      },
+      "frequency": {
+        "name": "Frequency"
+      },
+      "total_current": {
+        "name": "Total current"
+      },
+      "total_power": {
+        "name": "Total power"
+      },
+      "total_energy": {
+        "name": "Total energy"
+      },
+      "internal_temperature": {
+        "name": "Internal temperature"
+      },
+      "internal_humidity": {
+        "name": "Internal humidity"
+      },
+      "total_peak_current": {
+        "name": "Peak total current"
+      },
+      "total_peak_time": {
+        "name": "Peak total current time"
+      },
+      "total_warning_current": {
+        "name": "Total current warning level"
+      },
+      "total_off_current": {
+        "name": "Total current off level"
+      },
+      "voltage_min": {
+        "name": "Voltage warning minimum"
+      },
+      "voltage_max": {
+        "name": "Voltage warning maximum"
+      },
+      "humidity_min": {
+        "name": "Humidity warning minimum"
+      },
+      "humidity_max": {
+        "name": "Humidity warning maximum"
+      },
+      "peak_current": {
+        "name": "Peak current"
+      },
+      "peak_time": {
+        "name": "Peak current time"
+      },
+      "warning_current": {
+        "name": "Current warning level"
+      },
+      "off_current": {
+        "name": "Current off level"
+      },
+      "priority": {
+        "name": "Priority"
+      },
+      "power_on_delay": {
+        "name": "Power-on delay"
+      },
+      "lifetime_energy": {
+        "name": "Lifetime energy"
+      },
+      "apparent_energy": {
+        "name": "Apparent energy"
+      },
+      "airflow": {
+        "name": "Airflow"
+      },
+      "device_time": {
+        "name": "Device clock"
+      },
+      "external_temperature": {
+        "name": "External temperature {sensor}"
+      }
+    },
+    "binary_sensor": {
+      "intrusion": {
+        "name": "Intrusion {input}"
+      }
+    },
+    "event": {
+      "device_log": {
+        "name": "Device log",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "info": "Info",
+              "warning": "Warning",
+              "error": "Error",
+              "other": "Other"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "relay_failed": {
+      "message": "Switching outlet {outlet} failed: {error}"
+    }
+  }
+}
