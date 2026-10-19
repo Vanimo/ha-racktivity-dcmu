@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover
     import voluptuous as vol  # type: ignore[no-redef]
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -84,10 +84,61 @@ async def _probe(data: dict[str, Any]) -> tuple[str | None, str | None]:
     return pdu.state.name, None
 
 
+def _extras_fields(opts: dict[str, Any]) -> dict[Any, Any]:
+    """Optional fields shared by setup and options: relay control and web login."""
+    return {
+        vol.Optional(CONF_ENABLE_CONTROL, default=opts.get(CONF_ENABLE_CONTROL, False)): bool,
+        vol.Optional(
+            CONF_WRITE_COMMUNITY,
+            description={"suggested_value": opts.get(CONF_WRITE_COMMUNITY)},
+        ): _PASSWORD,
+        vol.Optional(
+            CONF_WEB_USERNAME,
+            description={"suggested_value": opts.get(CONF_WEB_USERNAME)},
+        ): str,
+        vol.Optional(
+            CONF_WEB_PASSWORD,
+            description={"suggested_value": opts.get(CONF_WEB_PASSWORD)},
+        ): _PASSWORD,
+    }
+
+
+async def _apply_extras(hass: HomeAssistant, host: str, user_input: dict[str, Any]) -> str | None:
+    """Normalise the optional fields in place; return an error key or None.
+
+    Control without a write community is turned off, a half-filled web
+    login is dropped, and a complete one is checked with one read.
+    """
+    if not user_input.get(CONF_WRITE_COMMUNITY):
+        user_input.pop(CONF_WRITE_COMMUNITY, None)
+        user_input[CONF_ENABLE_CONTROL] = False
+    if not (user_input.get(CONF_WEB_USERNAME) and user_input.get(CONF_WEB_PASSWORD)):
+        user_input.pop(CONF_WEB_USERNAME, None)
+        user_input.pop(CONF_WEB_PASSWORD, None)
+        return None
+    api = DcmuHttp(
+        async_get_clientsession(hass),
+        host,
+        user_input[CONF_WEB_USERNAME],
+        user_input[CONF_WEB_PASSWORD],
+    )
+    try:
+        await api.read_versions()
+    except DcmuHttpAuthError:
+        return "invalid_auth"
+    except DcmuHttpError:
+        return "cannot_connect_http"
+    return None
+
+
 class DcmuConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for a Racktivity DCMU."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        self._data: dict[str, Any] = {}
+        self._title = ""
 
     @staticmethod
     @callback
@@ -105,9 +156,28 @@ class DcmuConfigFlow(ConfigFlow, domain=DOMAIN):
             if error:
                 errors["base"] = error
             else:
-                return self.async_create_entry(title=name or user_input[CONF_HOST], data=user_input)
+                self._data = user_input
+                self._title = name or user_input[CONF_HOST]
+                return await self.async_step_extras()
         return self.async_show_form(
             step_id="user", data_schema=_connection_schema(user_input or {}), errors=errors
+        )
+
+    async def async_step_extras(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Optional: relay control and web login. Stored as options."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            error = await _apply_extras(self.hass, self._data[CONF_HOST], user_input)
+            if error:
+                errors["base"] = error
+            else:
+                return self.async_create_entry(
+                    title=self._title, data=self._data, options=user_input
+                )
+        return self.async_show_form(
+            step_id="extras",
+            data_schema=vol.Schema(_extras_fields(user_input or {})),
+            errors=errors,
         )
 
     async def async_step_reconfigure(
@@ -153,17 +223,10 @@ class DcmuOptionsFlow(OptionsFlowWithReload):
             for key in (CONF_SCAN_INTERVAL, CONF_CONFIG_INTERVAL, CONF_HTTP_INTERVAL):
                 if key in user_input:
                     user_input[key] = int(user_input[key])
-            if not user_input.get(CONF_WRITE_COMMUNITY):
-                user_input.pop(CONF_WRITE_COMMUNITY, None)
-                user_input[CONF_ENABLE_CONTROL] = False
-            if user_input.get(CONF_WEB_USERNAME) and user_input.get(CONF_WEB_PASSWORD):
-                error = await self._validate_web_login(user_input)
-                if error:
-                    errors["base"] = error
+            error = await _apply_extras(self.hass, self.config_entry.data[CONF_HOST], user_input)
+            if error:
+                errors["base"] = error
             else:
-                user_input.pop(CONF_WEB_USERNAME, None)
-                user_input.pop(CONF_WEB_PASSWORD, None)
-            if not errors:
                 return self.async_create_entry(data=user_input)
 
         opts = {**self.config_entry.options, **(user_input or {})}
@@ -176,40 +239,10 @@ class DcmuOptionsFlow(OptionsFlowWithReload):
                     CONF_CONFIG_INTERVAL,
                     default=opts.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL),
                 ): _seconds(MIN_CONFIG_INTERVAL, MAX_CONFIG_INTERVAL),
-                vol.Optional(
-                    CONF_ENABLE_CONTROL, default=opts.get(CONF_ENABLE_CONTROL, False)
-                ): bool,
-                vol.Optional(
-                    CONF_WRITE_COMMUNITY,
-                    description={"suggested_value": opts.get(CONF_WRITE_COMMUNITY)},
-                ): _PASSWORD,
-                vol.Optional(
-                    CONF_WEB_USERNAME,
-                    description={"suggested_value": opts.get(CONF_WEB_USERNAME)},
-                ): str,
-                vol.Optional(
-                    CONF_WEB_PASSWORD,
-                    description={"suggested_value": opts.get(CONF_WEB_PASSWORD)},
-                ): _PASSWORD,
+                **_extras_fields(opts),
                 vol.Required(
                     CONF_HTTP_INTERVAL, default=opts.get(CONF_HTTP_INTERVAL, DEFAULT_HTTP_INTERVAL)
                 ): _seconds(MIN_HTTP_INTERVAL, MAX_HTTP_INTERVAL),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
-
-    async def _validate_web_login(self, user_input: dict[str, Any]) -> str | None:
-        """One read-only request to check the web login."""
-        api = DcmuHttp(
-            async_get_clientsession(self.hass),
-            self.config_entry.data[CONF_HOST],
-            user_input[CONF_WEB_USERNAME],
-            user_input[CONF_WEB_PASSWORD],
-        )
-        try:
-            await api.read_versions()
-        except DcmuHttpAuthError:
-            return "invalid_auth"
-        except DcmuHttpError:
-            return "cannot_connect_http"
-        return None

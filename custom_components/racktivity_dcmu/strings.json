@@ -10,6 +10,16 @@
           "community": "Read community"
         }
       },
+      "extras": {
+        "title": "Optional: relay control and web login",
+        "description": "Everything here is optional; leave it empty to start read-only. You can change it later with the gear icon on the integration.\n\n**Relay control** needs both the checkbox and the SNMP write community. Without them, outlets are read-only binary sensors.\n\n**Web login** adds what SNMP doesn't provide (lifetime energy, firmware version, external sensors, the device event log). It's only used for reads.",
+        "data": {
+          "enable_control": "Allow switching outlet relays",
+          "write_community": "Write community",
+          "web_username": "Web username",
+          "web_password": "Web password"
+        }
+      },
       "reconfigure": {
         "title": "Reconfigure Racktivity DCMU",
         "data": {
@@ -22,7 +32,9 @@
     "error": {
       "cannot_connect": "No SNMP response. Check host, port and read community.",
       "not_dcmu": "The device answered, but is not a Racktivity DCMU.",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "invalid_auth": "The web login was rejected.",
+      "cannot_connect_http": "The web interface did not respond."
     },
     "abort": {
       "already_configured": "This PDU is already configured.",

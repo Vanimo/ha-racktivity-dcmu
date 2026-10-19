@@ -39,8 +39,13 @@ Samba or SSH add-on) and restart Home Assistant.
 | SNMP port | 161 | |
 | Read community | `public` | |
 
+A second, optional page asks for relay control (checkbox + SNMP write community) and the web
+login. Leave it empty to start read-only. A web login is checked with one read before it's
+saved.
+
 ### Options
 
+Everything from the optional setup page, plus the polling intervals, can be changed later:
 *Settings → Devices & services → Racktivity DCMU*, then the **gear icon** (⚙) next to the
 entry. The ⋮ menu has no options entry.
 
