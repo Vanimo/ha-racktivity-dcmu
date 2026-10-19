@@ -125,11 +125,21 @@ already catches relay changes and threshold-relevant values.
 
 ```bash
 python -m venv venv && venv/bin/pip install -r requirements_test.txt
-venv/bin/ruff check . && venv/bin/ruff format --check . && venv/bin/mypy custom_components/racktivity_dcmu
-venv/bin/pytest                                   # offline tests (fake agent / mocked HTTP)
+tools/check.sh                                    # exactly what CI runs: lint, format, types, tests
 DCMU_LIVE_HOST=<pdu-ip> venv/bin/pytest tests/test_live.py -s   # read-only, real PDU
 # optionally add DCMU_LIVE_WEB_USER=... DCMU_LIVE_WEB_PASSWORD=...
 ```
+
+Changes go through pull requests; CI must be green to merge.
+
+### Releasing
+
+1. In a pull request, bump `version` in `custom_components/racktivity_dcmu/manifest.json`
+   and add a `## [X.Y.Z]` section to [CHANGELOG.md](CHANGELOG.md). A test fails if they
+   don't match, so a forgotten bump can't be merged.
+2. Merge, then `git tag vX.Y.Z && git push github vX.Y.Z`.
+3. On GitHub, *Releases → Draft a new release*: pick the tag, paste the changelog section as
+   the notes, publish. HACS offers the update from the release.
 
 `raw/` is gitignored: keep device captures and notes there. Captures can contain the
 device's credentials.

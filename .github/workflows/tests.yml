@@ -21,11 +21,5 @@ jobs:
           cache-dependency-path: requirements_test.txt
       - name: Install test requirements
         run: pip install -r requirements_test.txt
-      - name: Lint
-        run: ruff check .
-      - name: Formatting
-        run: ruff format --check .
-      - name: Type check
-        run: mypy custom_components/racktivity_dcmu
-      - name: Tests
-        run: pytest -q
+      - name: Checks (lint, formatting, types, tests)
+        run: tools/check.sh

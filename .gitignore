@@ -7,3 +7,6 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
+# Personal Claude Code notes and settings
+CLAUDE.local.md
+.claude/settings.local.json
