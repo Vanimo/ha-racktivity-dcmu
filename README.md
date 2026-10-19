@@ -123,3 +123,7 @@ DCMU_LIVE_HOST=<pdu-ip> venv/bin/pytest tests/test_live.py -s   # read-only, rea
 
 `raw/` is gitignored: keep device captures and notes there. Captures can contain the
 device's credentials.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
