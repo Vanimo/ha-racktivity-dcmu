@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClien
 from custom_components.racktivity_dcmu.const import (
     CONF_COMMUNITY,
     CONF_CONFIG_INTERVAL,
+    CONF_CYCLE_DELAY,
     CONF_ENABLE_CONTROL,
     CONF_HTTP_INTERVAL,
     CONF_SCAN_INTERVAL,
@@ -109,6 +110,7 @@ async def test_options_flow(hass: HomeAssistant, fake_snmp) -> None:
         CONF_SCAN_INTERVAL: 10,
         CONF_CONFIG_INTERVAL: 600,
         CONF_ENABLE_CONTROL: False,
+        CONF_CYCLE_DELAY: 10,
         CONF_HTTP_INTERVAL: 60,
     }
 

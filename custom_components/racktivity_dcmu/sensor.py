@@ -160,6 +160,16 @@ PDU_SENSORS: tuple[PduSensorDescription, ...] = (
         value_fn=lambda s: s.total_off_current,
         **_LIMIT,
     ),
+    PduSensorDescription(
+        key="temperature_warning",
+        translation_key="temperature_warning",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.temperature_warning,
+    ),
     *(
         PduSensorDescription(
             key=key,

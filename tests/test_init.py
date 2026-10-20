@@ -9,6 +9,7 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_PORT, STATE_OFF, STATE_ON, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -22,6 +23,7 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
 from custom_components.racktivity_dcmu.const import (
     CONF_COMMUNITY,
     CONF_CONFIG_INTERVAL,
+    CONF_CYCLE_DELAY,
     CONF_ENABLE_CONTROL,
     CONF_SCAN_INTERVAL,
     CONF_WRITE_COMMUNITY,
@@ -176,8 +178,6 @@ async def test_switch(hass: HomeAssistant, fake_snmp) -> None:
 
 async def test_switch_failure(hass: HomeAssistant, fake_snmp) -> None:
     """A rejected SET surfaces as an error, state unchanged."""
-    from homeassistant.exceptions import HomeAssistantError
-
     await _setup(hass, {CONF_ENABLE_CONTROL: True, CONF_WRITE_COMMUNITY: "stale"})
     with pytest.raises(HomeAssistantError, match="Switching outlet 6 failed"):
         await hass.services.async_call(
@@ -217,7 +217,7 @@ async def test_diagnostics(hass: HomeAssistant, hass_client, fake_snmp) -> None:
     assert diag["entry"]["data"][CONF_COMMUNITY] == "**REDACTED**"
     assert diag["entry"]["options"][CONF_WRITE_COMMUNITY] == "**REDACTED**"
     assert diag["state"]["name"] == "Test PDU"
-    assert "2.23.0" in diag["unidentified_oids"]
+    assert diag["state"]["sensors"]["external_temperature_1_warning"] == 700
 
 
 async def test_power_factor_unknown_when_idle(hass: HomeAssistant, fake_snmp) -> None:
@@ -254,5 +254,95 @@ async def test_options_change_unloads_old_platforms(hass: HomeAssistant, fake_sn
     )
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
-    assert _loaded_platforms(hass, entry) == {"sensor", "switch"}
+    assert _loaded_platforms(hass, entry) == {"sensor", "binary_sensor", "switch", "button"}
     assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
+    assert hass.states.get("binary_sensor.test_pdu_out1") is None  # relay sensor gone
+    assert hass.states.get("binary_sensor.test_pdu_out1_over_current_warning_level")
+
+
+async def test_missing_sensor_table_is_harmless(hass: HomeAssistant, fake_snmp) -> None:
+    """Firmware without the external sensor table still sets up fully."""
+    del fake_snmp.values[f"{BASE}.4.1.1.5.0"]
+    entry = await _setup(hass)
+    assert entry.state is ConfigEntryState.LOADED
+    assert hass.states.get("sensor.test_pdu_voltage").state != STATE_UNAVAILABLE
+    assert entry.runtime_data.data.sensors_available is False
+
+
+async def test_temperature_warning_level(hass: HomeAssistant, fake_snmp) -> None:
+    """The verified .2.23 scalar is exposed as a (disabled) diagnostic sensor."""
+    entry = await _setup(hass)
+    registry = er.async_get(hass)
+    reg = registry.async_get("sensor.test_pdu_temperature_warning_level")
+    assert reg is not None and reg.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert entry.runtime_data.data.temperature_warning == 45.0
+
+
+async def test_problem_sensors(
+    hass: HomeAssistant, fake_snmp, freezer: FrozenDateTimeFactory
+) -> None:
+    """Over-limit flags follow the device's own warning levels."""
+    await _setup(hass)
+    assert (
+        hass.states.get("binary_sensor.test_pdu_out1_over_current_warning_level").state == STATE_OFF
+    )
+    assert (
+        hass.states.get("binary_sensor.test_pdu_over_total_current_warning_level").state
+        == STATE_OFF
+    )
+    assert hass.states.get("binary_sensor.test_pdu_voltage_out_of_range").state == STATE_OFF
+
+    fake_snmp.values[f"{BASE}.3.1.1.3.0"] = 2_000  # = outlet 1 warning level (mA)
+    fake_snmp.values[f"{BASE}.2.3.0"] = 12_000  # above the total warning level
+    fake_snmp.values[f"{BASE}.2.1.0"] = 25_000  # 250 V, above the max
+    freezer.tick(timedelta(seconds=DEFAULT_SCAN_INTERVAL))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert (
+        hass.states.get("binary_sensor.test_pdu_out1_over_current_warning_level").state == STATE_ON
+    )
+    assert (
+        hass.states.get("binary_sensor.test_pdu_over_total_current_warning_level").state == STATE_ON
+    )
+    assert hass.states.get("binary_sensor.test_pdu_voltage_out_of_range").state == STATE_ON
+
+
+async def test_power_cycle(hass: HomeAssistant, fake_snmp, freezer: FrozenDateTimeFactory) -> None:
+    """The button switches off, waits the configured delay, switches on."""
+    entry = await _setup(
+        hass,
+        {CONF_ENABLE_CONTROL: True, CONF_WRITE_COMMUNITY: WRITE_COMMUNITY, CONF_CYCLE_DELAY: 7},
+    )
+    client = entry.runtime_data.pdu.client
+    assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
+
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.test_pdu_out1_power_cycle"}, blocking=True
+    )
+    assert client.sets == [(f"{BASE}.3.1.1.7.0", 0)]
+    assert hass.states.get("switch.test_pdu_out1").state == STATE_OFF
+
+    # Pressing again while cycling is refused, and sends nothing.
+    with pytest.raises(HomeAssistantError, match="already power cycling"):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": "button.test_pdu_out1_power_cycle"}, blocking=True
+        )
+    assert len(client.sets) == 1
+
+    freezer.tick(timedelta(seconds=6))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert len(client.sets) == 1  # not yet
+
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert client.sets[-1] == (f"{BASE}.3.1.1.7.0", 1)
+    assert hass.states.get("switch.test_pdu_out1").state == STATE_ON
+    assert not entry.runtime_data.is_cycling(0)
+
+
+async def test_no_button_without_control(hass: HomeAssistant, fake_snmp) -> None:
+    """Power-cycle buttons exist only alongside the switches."""
+    await _setup(hass)
+    assert hass.states.get("button.test_pdu_out1_power_cycle") is None

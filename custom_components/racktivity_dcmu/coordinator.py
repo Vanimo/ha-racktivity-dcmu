@@ -15,33 +15,47 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from copy import deepcopy
-from datetime import timedelta
+from datetime import datetime, timedelta
+from functools import partial
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     CONF_CONFIG_INTERVAL,
+    CONF_CYCLE_DELAY,
     CONF_HTTP_INTERVAL,
     CONF_SCAN_INTERVAL,
     DEFAULT_CONFIG_INTERVAL,
+    DEFAULT_CYCLE_DELAY,
     DEFAULT_HTTP_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     EVENT_DEVICE_EVENT,
     EVENT_RELAY_CHANGED,
 )
-from .http_api import DcmuHttp, DcmuHttpError, HttpState
+from .http_api import DcmuHttp, DcmuHttpAuthError, DcmuHttpError, HttpState
 from .pdu import DcmuSnmp, PduState
 from .snmp import SnmpError
 
 _LOGGER = logging.getLogger(__name__)
 
 type DcmuConfigEntry = ConfigEntry[DcmuCoordinator]
+
+
+class CycleInProgress(Exception):
+    """A power cycle of this outlet is already running."""
+
+    def __init__(self, index: int) -> None:
+        self.index = index
+        super().__init__(f"Outlet {index + 1} is already power cycling")
 
 
 class DcmuCoordinator(DataUpdateCoordinator[PduState]):
@@ -67,6 +81,58 @@ class DcmuCoordinator(DataUpdateCoordinator[PduState]):
         self.config_interval = entry.options.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL)
         self._config_due = 0.0  # monotonic; 0 = read on first refresh
         self._last_relay_mask: int | None = None
+        self._sensors_warned = False
+        self.cycle_delay = entry.options.get(CONF_CYCLE_DELAY, DEFAULT_CYCLE_DELAY)
+        self._cycle_timers: dict[int, Callable[[], None]] = {}
+
+    async def _read_optional_sensors(self) -> None:
+        """The sensor table is optional; log once if this firmware lacks it."""
+        try:
+            await self.pdu.read_sensors()
+        except SnmpError as err:
+            if self._sensors_warned is False:
+                _LOGGER.info("Sensor table not readable on %s (%s)", self.pdu.client.host, err)
+                self._sensors_warned = True
+
+    def is_cycling(self, index: int) -> bool:
+        """True while a power cycle of this outlet is in progress."""
+        return index in self._cycle_timers
+
+    async def async_power_cycle(self, index: int) -> None:
+        """Switch an outlet off, and back on after the configured delay.
+
+        Raises SnmpError if the off command fails; the on command runs from a
+        timer and logs its failure instead (there is no caller to raise to).
+        """
+        if index in self._cycle_timers:
+            raise CycleInProgress(index)
+        await self.pdu.set_relay(index, False)
+        self._cycle_timers[index] = async_call_later(
+            self.hass, self.cycle_delay, partial(self._cycle_on, index)
+        )
+        await self.async_refresh()
+
+    @callback
+    def _cycle_on(self, index: int, _now: datetime) -> None:
+        self.config_entry.async_create_background_task(
+            self.hass, self._async_cycle_on(index), f"{DOMAIN} power cycle outlet {index + 1}"
+        )
+
+    async def _async_cycle_on(self, index: int) -> None:
+        try:
+            await self.pdu.set_relay(index, True)
+        except SnmpError as err:
+            _LOGGER.error("Power cycle: could not switch outlet %d back on: %s", index + 1, err)
+        finally:
+            self._cycle_timers.pop(index, None)
+        await self.async_refresh()
+
+    def cancel_power_cycles(self) -> None:
+        """Cancel pending switch-on timers (on unload); affected outlets stay off."""
+        for index, cancel in self._cycle_timers.items():
+            cancel()
+            _LOGGER.warning("Unloading during a power cycle; outlet %d stays off", index + 1)
+        self._cycle_timers.clear()
 
     def request_config_refresh(self) -> None:
         """Re-read configuration on the next update."""
@@ -81,6 +147,7 @@ class DcmuCoordinator(DataUpdateCoordinator[PduState]):
             if relay_changed or time.monotonic() >= self._config_due:
                 await self.pdu.read_config()
                 self._config_due = time.monotonic() + self.config_interval
+                await self._read_optional_sensors()
         except SnmpError as err:
             raise UpdateFailed(f"Error communicating with {self.pdu.client.host}: {err}") from err
 
@@ -133,6 +200,9 @@ class DcmuHttpCoordinator(DataUpdateCoordinator[HttpState]):
         had_versions = self._state.sw_version is not None
         try:
             state = await self.api.read_state(self._state)
+        except DcmuHttpAuthError as err:
+            # Starts a reauth flow; the SNMP coordinator is unaffected.
+            raise ConfigEntryAuthFailed("Web login rejected") from err
         except DcmuHttpError as err:
             raise UpdateFailed(f"Web API error: {err}") from err
 

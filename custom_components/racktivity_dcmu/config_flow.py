@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 try:  # HA >= 2026.x validates with probatio (voluptuous-compatible)
@@ -19,6 +20,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     CONF_COMMUNITY,
     CONF_CONFIG_INTERVAL,
+    CONF_CYCLE_DELAY,
     CONF_ENABLE_CONTROL,
     CONF_HTTP_INTERVAL,
     CONF_SCAN_INTERVAL,
@@ -27,14 +29,17 @@ from .const import (
     CONF_WRITE_COMMUNITY,
     DEFAULT_COMMUNITY,
     DEFAULT_CONFIG_INTERVAL,
+    DEFAULT_CYCLE_DELAY,
     DEFAULT_HTTP_INTERVAL,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MAX_CONFIG_INTERVAL,
+    MAX_CYCLE_DELAY,
     MAX_HTTP_INTERVAL,
     MAX_SCAN_INTERVAL,
     MIN_CONFIG_INTERVAL,
+    MIN_CYCLE_DELAY,
     MIN_HTTP_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
@@ -180,6 +185,39 @@ class DcmuConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
+        """The PDU rejected the web login; ask for a new one."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Validate the new web login and store it in the options."""
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            error = await _apply_extras(self.hass, entry.data[CONF_HOST], user_input)
+            if error:
+                errors["base"] = error
+            elif CONF_WEB_USERNAME not in user_input:
+                errors["base"] = "invalid_auth"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry, options={**entry.options, **user_input}
+                )
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_WEB_USERNAME, default=entry.options.get(CONF_WEB_USERNAME, "")
+                    ): str,
+                    vol.Required(CONF_WEB_PASSWORD): _PASSWORD,
+                }
+            ),
+            errors=errors,
+        )
+
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -220,7 +258,12 @@ class DcmuOptionsFlow(OptionsFlowWithReload):
         """Manage options."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            for key in (CONF_SCAN_INTERVAL, CONF_CONFIG_INTERVAL, CONF_HTTP_INTERVAL):
+            for key in (
+                CONF_SCAN_INTERVAL,
+                CONF_CONFIG_INTERVAL,
+                CONF_HTTP_INTERVAL,
+                CONF_CYCLE_DELAY,
+            ):
                 if key in user_input:
                     user_input[key] = int(user_input[key])
             error = await _apply_extras(self.hass, self.config_entry.data[CONF_HOST], user_input)
@@ -240,6 +283,9 @@ class DcmuOptionsFlow(OptionsFlowWithReload):
                     default=opts.get(CONF_CONFIG_INTERVAL, DEFAULT_CONFIG_INTERVAL),
                 ): _seconds(MIN_CONFIG_INTERVAL, MAX_CONFIG_INTERVAL),
                 **_extras_fields(opts),
+                vol.Required(
+                    CONF_CYCLE_DELAY, default=opts.get(CONF_CYCLE_DELAY, DEFAULT_CYCLE_DELAY)
+                ): _seconds(MIN_CYCLE_DELAY, MAX_CYCLE_DELAY),
                 vol.Required(
                     CONF_HTTP_INTERVAL, default=opts.get(CONF_HTTP_INTERVAL, DEFAULT_HTTP_INTERVAL)
                 ): _seconds(MIN_HTTP_INTERVAL, MAX_HTTP_INTERVAL),

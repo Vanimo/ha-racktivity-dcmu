@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from .snmp import NoSuchObject, SnmpClient, SnmpValue
+from .snmp import SnmpClient, SnmpError, SnmpValue
 
 BASE = "1.3.6.1.4.1.34097"
 NUM_OUTLETS = 8
@@ -30,7 +30,7 @@ def _outlet(col: int, idx: int) -> str:
     return f"{BASE}.3.1.1.{col}.{idx}"
 
 
-def _outlet2(col: int, idx: int) -> str:
+def _sensor(col: int, idx: int) -> str:
     return f"{BASE}.4.1.1.{col}.{idx}"
 
 
@@ -53,7 +53,11 @@ S_HUMIDITY_MAX = 18  # raw signed byte, (&0xFF)/2 -> %
 S_VOLTAGE_MIN = 20  # 0.01 V
 S_VOLTAGE_MAX = 21  # 0.01 V
 S_VOLTAGE_TRAP = 22
-S_UNKNOWN = (12, 13, 14, 19, 23, 24)
+S_HUMIDITY_TRAP = 19
+S_TEMPERATURE_WARNING = 23  # 0.1 °C (internal)
+S_TEMPERATURE_TRAP = 24
+# Probably airflow (0.1 m/s) and the two intrusion inputs; unverifiable without the sensors.
+S_SENSOR_SCALARS = (12, 13, 14)
 
 # Outlet table columns (.3.1.1.col.idx)
 C_NAME = 2
@@ -63,7 +67,7 @@ C_APPARENT = 5  # VA
 C_PF = 6  # %
 C_RELAY = 7  # 1 = on
 C_ENERGY = 8  # Wh (resettable)
-C_UNKNOWN9 = 9
+# Column 9 is unidentified (0 on every outlet) and deliberately not polled.
 C_PEAK_CURRENT = 10  # mA
 C_PEAK_TIME = 11  # unix
 C_WARNING = 12  # mA
@@ -85,11 +89,12 @@ CONFIG_SCALARS = (
     S_VOLTAGE_MIN,
     S_VOLTAGE_MAX,
     S_VOLTAGE_TRAP,
-    *S_UNKNOWN,
+    S_HUMIDITY_TRAP,
+    S_TEMPERATURE_WARNING,
+    S_TEMPERATURE_TRAP,
 )
 CONFIG_COLUMNS = (
     C_NAME,
-    C_UNKNOWN9,
     C_PEAK_CURRENT,
     C_PEAK_TIME,
     C_WARNING,
@@ -97,7 +102,10 @@ CONFIG_COLUMNS = (
     C_PRIORITY,
     C_DELAY,
 )
-OUTLET2_COLUMNS = (2, 3, 4, 5, 6)
+# External temperature sensor table (.4.1.1.col.idx, idx = sensor 1..8):
+# 2 reading, 3 min, 4 max (all 0 without probes), 5 warning level (0.1 °C), 6 trap enable.
+X_TEMPERATURE = 2
+X_WARNING = 5
 
 LIVE_OIDS: tuple[str, ...] = (
     *(_scalar(s) for s in LIVE_SCALARS),
@@ -109,7 +117,12 @@ CONFIG_OIDS: tuple[str, ...] = (
     OID_AGENT_DATE,
     *(_scalar(s) for s in CONFIG_SCALARS),
     *(_outlet(c, i) for c in CONFIG_COLUMNS for i in range(NUM_OUTLETS)),
-    *(_outlet2(c, i) for c in OUTLET2_COLUMNS for i in range(NUM_OUTLETS)),
+)
+# Optional sensors: read separately so a firmware without them can't break the
+# config read (the agent stays silent on a request with an unknown OID).
+SENSOR_OIDS: tuple[str, ...] = (
+    *(_scalar(s) for s in S_SENSOR_SCALARS),
+    *(_sensor(c, i) for c in (X_TEMPERATURE, X_WARNING) for i in range(NUM_OUTLETS)),
 )
 
 
@@ -132,6 +145,11 @@ def _str(value: SnmpValue) -> str | None:
 def _scaled(value: SnmpValue, div: float) -> float | None:
     raw = _int(value)
     return None if raw is None else raw / div
+
+
+def _flag(value: SnmpValue) -> bool | None:
+    raw = _int(value)
+    return None if raw is None else bool(raw)
 
 
 def _timestamp(value: SnmpValue) -> datetime | None:
@@ -191,8 +209,13 @@ class PduState:
     voltage_min: float | None = None
     voltage_max: float | None = None
     voltage_trap: bool | None = None
+    humidity_trap: bool | None = None
+    temperature_warning: float | None = None
+    temperature_trap: bool | None = None
     outlets: list[Outlet] = field(default_factory=lambda: [Outlet(i) for i in range(NUM_OUTLETS)])
-    unknown: dict[str, SnmpValue] = field(default_factory=dict)
+    # Optional sensor table, raw values keyed by a descriptive name (for diagnostics).
+    sensors: dict[str, int] = field(default_factory=dict)
+    sensors_available: bool | None = None
     live_updated: datetime | None = field(default=None, compare=False)
     config_updated: datetime | None = field(default=None, compare=False)
 
@@ -254,8 +277,10 @@ def apply_config(state: PduState, values: dict[str, SnmpValue]) -> None:
     state.humidity_max = None if hmax is None else (hmax & 0xFF) / 2
     state.voltage_min = _scaled(sv(S_VOLTAGE_MIN), 100)
     state.voltage_max = _scaled(sv(S_VOLTAGE_MAX), 100)
-    trap = _int(sv(S_VOLTAGE_TRAP))
-    state.voltage_trap = None if trap is None else bool(trap)
+    state.voltage_trap = _flag(sv(S_VOLTAGE_TRAP))
+    state.humidity_trap = _flag(sv(S_HUMIDITY_TRAP))
+    state.temperature_warning = _scaled(sv(S_TEMPERATURE_WARNING), 10)
+    state.temperature_trap = _flag(sv(S_TEMPERATURE_TRAP))
     for outlet in state.outlets:
         i = outlet.index
         outlet.name = _str(ov(C_NAME, i))
@@ -265,17 +290,22 @@ def apply_config(state: PduState, values: dict[str, SnmpValue]) -> None:
         outlet.off_current = _scaled(ov(C_OFF, i), 1000)
         outlet.priority = _int(ov(C_PRIORITY, i))
         outlet.power_on_delay = _int(ov(C_DELAY, i))
-    unknown_oids = [
-        *(_scalar(s) for s in S_UNKNOWN),
-        *(_outlet(C_UNKNOWN9, i) for i in range(NUM_OUTLETS)),
-        *(_outlet2(c, i) for c in OUTLET2_COLUMNS for i in range(NUM_OUTLETS)),
-    ]
-    state.unknown = {
-        oid[len(BASE) + 1 :]: values[oid]
-        for oid in unknown_oids
-        if oid in values and not isinstance(values[oid], NoSuchObject)
-    }
     state.config_updated = datetime.now(UTC)
+
+
+def apply_sensors(state: PduState, values: dict[str, SnmpValue]) -> None:
+    """Update the optional sensor values from a GET of SENSOR_OIDS."""
+    raw: dict[str, int] = {}
+    for name, n in (("airflow", 12), ("intrusion_1", 13), ("intrusion_2", 14)):
+        if (v := _int(values.get(_scalar(n)))) is not None:
+            raw[name] = v
+    for i in range(NUM_OUTLETS):
+        if (v := _int(values.get(_sensor(X_TEMPERATURE, i)))) is not None:
+            raw[f"external_temperature_{i + 1}"] = v
+        if (v := _int(values.get(_sensor(X_WARNING, i)))) is not None:
+            raw[f"external_temperature_{i + 1}_warning"] = v
+    state.sensors = raw
+    state.sensors_available = True
 
 
 class DcmuSnmp:
@@ -306,8 +336,19 @@ class DcmuSnmp:
         return self.state
 
     async def read_config(self) -> PduState:
-        """Read names, thresholds, peaks and the unidentified OIDs."""
+        """Read names, thresholds and peaks."""
         apply_config(self.state, await self.client.get(CONFIG_OIDS))
+        return self.state
+
+    async def read_sensors(self) -> PduState:
+        """Read the optional sensor table. May raise SnmpError on firmware without it."""
+        try:
+            values = await self.client.get(SENSOR_OIDS)
+        except SnmpError:
+            self.state.sensors = {}
+            self.state.sensors_available = False
+            raise
+        apply_sensors(self.state, values)
         return self.state
 
     async def set_relay(self, index: int, on: bool) -> None:

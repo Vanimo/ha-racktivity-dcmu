@@ -273,3 +273,49 @@ async def test_removing_web_login_cleans_registry(
     assert registry.async_get("event.test_pdu_device_log") is None
     assert registry.async_get("sensor.test_pdu_out1_energy") is not None
     assert hass.states.get("binary_sensor.test_pdu_out1") is not None
+
+
+async def test_reauth_when_login_rejected(
+    hass: HomeAssistant,
+    fake_snmp,
+    aioclient_mock: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A 401 starts a reauth flow; SNMP keeps working; the new login is stored."""
+    from homeassistant.config_entries import SOURCE_REAUTH
+    from homeassistant.data_entry_flow import FlowResultType
+
+    _mock_device(aioclient_mock)
+    entry = await _setup(hass)
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{URL}?code=GR0003200096D", status=401)
+    aioclient_mock.get(f"{URL}?code=GF00194000060000000001D", status=401)
+    freezer.tick(timedelta(seconds=60))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.test_pdu_voltage").state != STATE_UNAVAILABLE
+    assert hass.states.get("sensor.test_pdu_out1_lifetime_energy").state == STATE_UNAVAILABLE
+    flows = hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    assert len(flows) == 1
+    assert flows[0]["context"]["source"] == SOURCE_REAUTH
+    assert flows[0]["step_id"] == "reauth_confirm"
+
+    # Wrong password again: stays on the form.
+    result = await hass.config_entries.flow.async_configure(
+        flows[0]["flow_id"], {CONF_WEB_USERNAME: "admin", CONF_WEB_PASSWORD: "still-wrong"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+    _mock_device(aioclient_mock)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_WEB_USERNAME: "admin", CONF_WEB_PASSWORD: "new-secret"}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    await hass.async_block_till_done()
+    assert entry.options[CONF_WEB_PASSWORD] == "new-secret"
+    assert hass.states.get("sensor.test_pdu_out1_lifetime_energy").state != STATE_UNAVAILABLE
+    _assert_only_reads(aioclient_mock)
