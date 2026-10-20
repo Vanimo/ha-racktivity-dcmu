@@ -9,9 +9,9 @@ must carry the same version (a test checks this).
 - **Power cycle** button per outlet (with relay control enabled): switches the outlet off and
   back on after the new *Power cycle off time* option (default 10 s). Pressing it again while
   a cycle is running is refused.
-- Problem sensors computed from the limits configured on the PDU: *Over current warning
-  level* per outlet, and *Over total current warning level* and *Voltage out of range* for the
-  PDU. Handy automation triggers without templates.
+- Problem sensors, computed from the warning levels configured on the PDU, so you can still
+  react before the PDU's own off level trips the outlet: *Over current warning level* per
+  outlet, and *Over total current warning level* and *Voltage out of range* for the PDU.
 - *Temperature warning level* diagnostic sensor (disabled by default).
 - Re-authentication: if the PDU rejects the web login, Home Assistant asks for the new one
   instead of leaving the web API entities unavailable.
@@ -22,6 +22,12 @@ must carry the same version (a test checks this).
   in its own request so a firmware without it can't break the configuration read. The one
   remaining unidentified outlet value is no longer polled.
 - Diagnostics show the raw external sensor table instead of "unidentified OIDs".
+
+### Upgrading
+- Update through HACS and restart Home Assistant. No options change; existing entities keep
+  their IDs.
+- With relay control enabled you get eight new *Power cycle* buttons. Try one on an unused
+  outlet first.
 
 ## [0.2.0]
 
