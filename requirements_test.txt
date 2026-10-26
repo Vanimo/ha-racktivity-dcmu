@@ -1,4 +1,4 @@
 # Test/lint tooling, pinned so CI matches local runs. Dependabot proposes updates.
 pytest-homeassistant-custom-component==0.13.373
-ruff==0.17.1
+ruff==0.17.2
 mypy==2.4.0
