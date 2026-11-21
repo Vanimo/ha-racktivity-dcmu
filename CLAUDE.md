@@ -1,7 +1,8 @@
 # Notes for AI assistants
 
 Home Assistant custom integration (HACS) for the Racktivity DCMU PDU.
-Code in `custom_components/racktivity_dcmu/`, tests in `tests/`, user docs in `README.md`.
+Code in `custom_components/racktivity_dcmu/`, tests in `tests/`. `README.md` is for users;
+`DEVELOPMENT.md` has the layout, device quirks, conventions and release steps.
 
 - Run `tools/check.sh` before committing; it is exactly what CI runs (ruff, mypy, pytest).
   `main` only changes through pull requests with green CI.

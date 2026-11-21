@@ -1,36 +1,61 @@
 # Racktivity DCMU for Home Assistant
 
+[![Release](https://img.shields.io/github/v/release/Vanimo/ha-racktivity-dcmu)](https://github.com/Vanimo/ha-racktivity-dcmu/releases)
 [![Tests](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/tests.yml/badge.svg)](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/tests.yml)
 [![Validate](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/validate.yml/badge.svg)](https://github.com/Vanimo/ha-racktivity-dcmu/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Custom integration for the **Racktivity DCMU / EnergySwitch PM0816** 8-outlet PDU
-(hardware 2.02, firmware 3.00; the SNMP agent reports `DCMU_8port`). The vendor is
-gone and there is no published MIB; everything here was worked out from the device's web
-UI and its SNMP values.
+A [Home Assistant](https://www.home-assistant.io/) integration for the **Racktivity DCMU /
+EnergySwitch PM0816**, a 1U rack PDU with one C20 inlet and eight switched, metered C13
+outlets. It reads the PDU over SNMP on your local network, shows every outlet's power use in
+Home Assistant, and, if you choose to enable it, lets you switch or power-cycle outlets.
 
-- **SNMP v2c** (primary): voltage, frequency, per-outlet current / power / apparent power /
-  power factor / energy, relay states, internal temperature and humidity, peaks, limits.
-- **Web API** (optional, read-only): only values SNMP doesn't have: lifetime (non-resettable)
-  energy, firmware/hardware version, external temperature probes, airflow, intrusion
-  inputs, device clock, and the device's event log.
-- **Relay control** (optional, off by default): SNMP SET with the write community.
+Racktivity no longer exists and never published a MIB for this model. Everything in this
+integration was worked out from the device's own web interface and verified on real hardware
+(hardware 2.02, firmware 3.00). If you have a DCMU with a different firmware, please
+[open an issue](https://github.com/Vanimo/ha-racktivity-dcmu/issues) with your findings.
 
-No settings are ever changed on the PDU. The only write the integration can make is switching
-an outlet relay, and only after you explicitly enable it.
+## What you get
+
+- **Per outlet:** current, power, apparent power, power factor, energy, peak current, relay
+  state, and an *over warning level* problem sensor.
+- **Whole PDU:** voltage, frequency, total current, power and energy, internal temperature and
+  humidity, and *over total warning level* / *voltage out of range* problem sensors.
+- **Control** (off by default): a switch and a *Power cycle* button per outlet.
+- **Optional web-interface extras:** lifetime (non-resettable) energy for the Energy
+  dashboard, firmware version, external temperature probes, airflow, intrusion inputs, and
+  the PDU's event log as Home Assistant events.
+- **Events** for relay changes and settings changes on the PDU, for automations.
+
+The integration never changes settings on the PDU. The only thing it can write is an outlet
+relay, and only after you enable control and enter the SNMP write community.
+
+## Requirements
+
+- Home Assistant 2025.1 or newer.
+- A Racktivity DCMU / EnergySwitch PM0816 reachable from Home Assistant over the network.
+- SNMP enabled on the PDU with a read community (the factory default is `public`).
+- For switching outlets: the PDU's SNMP write community.
+- For the extras: the PDU's web interface login.
+
+The PDU speaks plain HTTP and SNMP v2c, neither of which is encrypted. Keep it on a trusted
+network segment.
 
 ## Installation
 
-### HACS (custom repository)
+### With HACS (recommended)
 
-1. Push this folder to a GitHub repository (the layout already matches HACS:
-   `custom_components/racktivity_dcmu/` + `hacs.json`).
-2. HACS → ⋮ → *Custom repositories* → add the repository URL, type *Integration*.
-3. Install **Racktivity DCMU**, restart Home Assistant.
+1. In HACS, open the ⋮ menu (top right) → **Custom repositories**.
+2. Add `https://github.com/Vanimo/ha-racktivity-dcmu` with type **Integration**.
+3. Search for **Racktivity DCMU**, download it, and restart Home Assistant.
+
+HACS will offer updates when a new release is published.
 
 ### Manual
 
-Copy `custom_components/racktivity_dcmu/` to `/config/custom_components/` (e.g. with the
-Samba or SSH add-on) and restart Home Assistant.
+Copy the `custom_components/racktivity_dcmu` folder from the
+[latest release](https://github.com/Vanimo/ha-racktivity-dcmu/releases) into your Home
+Assistant `config/custom_components/` folder and restart Home Assistant.
 
 ## Setup
 
@@ -43,116 +68,130 @@ Samba or SSH add-on) and restart Home Assistant.
 | Read community | `public` | |
 
 A second, optional page asks for relay control (checkbox + SNMP write community) and the web
-login. Leave it empty to start read-only. A web login is checked with one read before it's
-saved.
+login. Leave it empty to start read-only; everything on it can be changed later. A web login is
+checked with one read before it's saved.
+
+You get one device for the PDU and one per outlet, named after the outlet names configured on
+the PDU. Rename them in Home Assistant if you like; the integration keeps its own names.
 
 ### Options
 
-Everything from the optional setup page, plus the polling intervals, can be changed later:
 *Settings → Devices & services → Racktivity DCMU*, then the **gear icon** (⚙) next to the
-entry. The ⋮ menu has no options entry.
+entry. (The ⋮ menu has no options entry.)
 
 | Option | Default | What it does |
 |---|---|---|
-| Scan interval | 15 s | Live values + relay states (2 small SNMP GETs). Current and power are informative; energy comes from the cumulative Wh counters, so faster polling adds little |
-| Configuration interval | 300 s | Names, limits, peaks. Also re-read right after a relay change or a "setting changed" log entry |
-| Allow switching outlet relays | off | Turns outlet binary sensors into switches. Needs the write community too |
-| Write community | — | SNMP write community. Only used for relay switching |
+| Scan interval | 15 s | Live values and relay states. Energy comes from the PDU's cumulative counters, so faster polling adds little |
+| Configuration interval | 300 s | Names, limits and peaks. Also re-read right after a relay change or a settings change on the PDU |
+| Allow switching outlet relays | off | Turns the outlet relay sensors into switches and adds the *Power cycle* buttons. Needs the write community too |
+| Write community | — | SNMP write community, only used for switching |
 | Power cycle off time | 10 s | How long an outlet stays off when its *Power cycle* button is pressed |
-| Web username / password | — | Enables the read-only web API extras |
-| Web API interval | 60 s | Web API extras + event log (3 HTTP requests) |
+| Web username / password | — | Enables the read-only web-interface extras |
+| Web API interval | 60 s | How often the extras and the event log are read |
 
 ## Entities
 
-PDU device: voltage, frequency, total current, total power, total energy, internal
-temperature, internal humidity, peak total current, and two problem sensors: *Over total
-current warning level* and *Voltage out of range*, computed from the limits configured on
-the PDU. Disabled diagnostic entities: total current warning/off level, voltage, humidity and
-temperature warning limits, peak time.
+**PDU device:** voltage, frequency, total current, total power, total energy, internal
+temperature, internal humidity, peak total current, and the problem sensors *Over total current
+warning level* and *Voltage out of range*. Diagnostic entities, disabled by default: the current,
+voltage, humidity and temperature warning levels, the total current off level, and the peak time.
 
-One device per outlet (named after the outlet name configured on the PDU):
+**Each outlet:**
 
-| Entity | Source | Notes |
-|---|---|---|
-| Relay | SNMP | binary sensor (read-only), or a switch with control enabled |
-| Power cycle | SNMP | button, only with control enabled: off, wait the configured time, on |
-| Over current warning level | SNMP | problem sensor: current at or above the outlet's warning level |
-| Current, power, apparent power, power factor | SNMP | power factor is *unknown* while the outlet draws nothing |
-| Energy | SNMP | **resettable** counter (the web UI's "Resettable kWh") |
-| Lifetime energy | web API | never reset; the best choice for the Energy dashboard |
-| Peak current | SNMP | diagnostic; peak time, warning/off level, priority, power-on delay are disabled by default |
-| Apparent energy | web API | VAh, disabled by default |
+| Entity | Notes |
+|---|---|
+| Relay | binary sensor while read-only; a switch once control is enabled |
+| Power cycle | button, with control enabled: off → wait the configured time → on |
+| Over current warning level | problem sensor: current at or above the outlet's warning level |
+| Current, power, apparent power, power factor | power factor shows *unknown* while the outlet draws nothing |
+| Energy | the PDU's **resettable** counter |
+| Lifetime energy | web extras: never reset, the right one for the Energy dashboard |
+| Peak current | diagnostic; peak time, warning/off levels, priority and power-on delay are disabled by default |
+| Apparent energy | web extras, disabled by default |
 
-With the web API: external temperature 1–8 (enabled only for probes connected at setup),
-airflow, intrusion 1/2, device clock (disabled by default), and a **Device log** event entity.
+**With the web login:** external temperature 1–8 (enabled only for probes that were connected
+at setup), airflow, intrusion 1/2, the device clock (disabled by default), and a *Device log*
+event entity.
 
-## Events
+### Problem sensors
+
+The three problem sensors use the **warning** levels configured on the PDU's Protection page,
+not the off levels: they turn on while you can still do something about it, before the PDU
+itself cuts the outlet. A short spike between two polls can be missed; sustained overloads
+are what they're for.
+
+### Energy dashboard
+
+Use the per-outlet **Lifetime energy** sensors (web login needed). The plain *Energy* sensors
+are the PDU's resettable counters: they work too, but drop to zero if someone presses *reset*
+in the PDU's web interface.
+
+## Automations
+
+Two events are fired on the Home Assistant event bus:
 
 | Event | When | Data |
 |---|---|---|
-| `racktivity_dcmu_relay_changed` | an outlet relay changed state (by anyone) | `outlet`, `name`, `is_on` |
-| `racktivity_dcmu_device_event` | a new row in the PDU's event log (web API) | `level`, `description`, `setting`, `address`, `ip_address`, `timestamp` |
+| `racktivity_dcmu_relay_changed` | an outlet relay changed state, whoever switched it | `outlet`, `name`, `is_on` |
+| `racktivity_dcmu_device_event` | a new row in the PDU's event log (web login needed) | `level`, `description`, `setting`, `address`, `ip_address`, `timestamp` |
 
-The PDU logs every write made through its web UI, including the source IP. Example automation:
+The PDU logs every settings change made through its web interface, including the source IP, so
+you can be told when someone changes it:
 
 ```yaml
-trigger:
-  - platform: event
+triggers:
+  - trigger: event
     event_type: racktivity_dcmu_device_event
     event_data:
       level: info
-condition: "{{ trigger.event.data.setting is not none }}"
-action:
-  - service: notify.notify
+conditions:
+  - condition: template
+    value_template: "{{ trigger.event.data.setting is not none }}"
+actions:
+  - action: notify.notify
     data:
       message: >
         PDU setting {{ trigger.event.data.setting }} changed from
         {{ trigger.event.data.ip_address }}
 ```
 
-## Polling and load
+A typical use of the *Power cycle* button is restarting a modem or switch when a ping fails;
+use the `button.press` action on the outlet's power-cycle button.
 
-Per scan (15 s): 2 SNMP GETs, about 55 values. Every 300 s: 5 more GETs for configuration.
-With the web API, every 60 s: 3 HTTP GETs (~1 KB). The PDU's own web UI polls every 2 s, so
-this is well within what the device handles.
+## Troubleshooting
 
-SNMP traps aren't used. They'd need a trap receiver configured on the PDU (a settings
-change), a UDP listener inside Home Assistant, and their content is undocumented. Polling at 15 s
-already catches relay changes and threshold-relevant values.
+- **"No SNMP response" during setup:** check that Home Assistant can reach the PDU on UDP
+  port 161 (VLANs, firewalls) and that the read community is right. The PDU answers a wrong
+  community with silence, which looks the same as a wrong address.
+- **Entities unavailable:** the PDU didn't answer two polls in a row. They recover by
+  themselves when it does.
+- **Reauthenticate prompt:** the PDU rejected the stored web login; enter the current one. The
+  SNMP entities keep working meanwhile.
+- **Diagnostics:** on the integration entry, ⋮ → *Download diagnostics* gives the decoded
+  device state with all passwords and communities redacted. Attach it when you open an issue.
+
+## How it works
+
+Every scan interval the integration sends two small SNMP GET requests (about 55 values); every
+configuration interval a few more for names, limits and peaks. With the web login it also
+fetches three small pages from the PDU's web interface per web API interval. The PDU's own web
+UI polls every 2 seconds, so this is well within what the device handles. SNMP traps are not
+used; polling at 15 s already catches relay changes.
 
 ## Known limitations
 
-- If the PDU's web password changes, Home Assistant shows a *Reauthenticate* prompt for the
-  integration; the SNMP entities keep working meanwhile.
-- The agent drops any request containing an OID it doesn't know (no error, just silence), so the
-  integration only ever asks for known OIDs.
-- One outlet OID (`.3.1.1.9`) is still unidentified and is not polled. The external
-  temperature sensor table is read over SNMP and shown raw in *Download diagnostics*; its
-  readings aren't exposed as entities until someone with probes confirms the scale.
+- Only tested on the 8-outlet DCMU with firmware 3.00. Other Racktivity models (the ES series)
+  use a different SNMP layout and won't work.
+- One SNMP value per outlet is still unidentified and is not polled. The external temperature
+  sensor table is read over SNMP and shown raw in the diagnostics; its readings aren't exposed
+  as entities until someone with probes confirms the scale.
+- Settings on the PDU (thresholds, names, schedules, network) are intentionally not editable
+  from Home Assistant. The device page has a **Visit** link to the PDU's web interface for that.
 
-## Development
+## More
 
-```bash
-python -m venv venv && venv/bin/pip install -r requirements_test.txt
-tools/check.sh                                    # exactly what CI runs: lint, format, types, tests
-DCMU_LIVE_HOST=<pdu-ip> venv/bin/pytest tests/test_live.py -s   # read-only, real PDU
-# optionally add DCMU_LIVE_WEB_USER=... DCMU_LIVE_WEB_PASSWORD=...
-```
-
-Changes go through pull requests; CI must be green to merge.
-
-### Releasing
-
-1. In a pull request, bump `version` in `custom_components/racktivity_dcmu/manifest.json`
-   and add a `## [X.Y.Z]` section to [CHANGELOG.md](CHANGELOG.md). A test fails if they
-   don't match, so a forgotten bump can't be merged.
-2. Merge, then `git tag vX.Y.Z && git push github vX.Y.Z`.
-3. On GitHub, *Releases → Draft a new release*: pick the tag, paste the changelog section as
-   the notes, publish. HACS offers the update from the release.
-
-`raw/` is gitignored: keep device captures and notes there. Captures can contain the
-device's credentials.
-
-## License
-
-MIT, see [LICENSE](LICENSE).
+- [Changelog](CHANGELOG.md) and [releases](https://github.com/Vanimo/ha-racktivity-dcmu/releases)
+- [Issues](https://github.com/Vanimo/ha-racktivity-dcmu/issues): bug reports, questions, findings
+  from other DCMU units
+- [Development guide](DEVELOPMENT.md): running the tests, project conventions, releasing
+- [License](LICENSE): MIT
