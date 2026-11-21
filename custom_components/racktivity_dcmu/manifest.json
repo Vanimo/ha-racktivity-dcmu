@@ -1,6 +1,7 @@
 {
   "domain": "racktivity_dcmu",
   "name": "Racktivity DCMU",
+  "categories": ["plugs_switches", "energy.meters_monitoring"],
   "codeowners": ["@Vanimo"],
   "config_flow": true,
   "documentation": "https://github.com/Vanimo/ha-racktivity-dcmu",
